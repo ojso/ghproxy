@@ -51,6 +51,8 @@ curl -sI "http://127.0.0.1:8080/https://raw.githubusercontent.com/github/gitigno
 
 因为本项目是标准前缀式，普通字符串替换就能接上。
 
+> 如果反代挂在 `/ghproxy/` 前缀下并启用 HTTPS（见 `deploy/README.md`），把上面的 `http://cache.corp:8080/` 换成 `https://cache.corp/ghproxy/` 即可。
+
 ### 安装脚本
 
 `curl ... | bash` 这类脚本里的 URL 是硬编码的，改环境变量无效，需要先把脚本落地再替换地址：
@@ -185,4 +187,4 @@ uv run pytest
 
 ## 部署
 
-Docker 与 systemd 的完整步骤见 [`deploy/README.md`](deploy/README.md)，样例文件（`Dockerfile`、`docker-compose.yml`、`nginx.conf`、`ghproxy.service`）都在 `deploy/`。
+Docker 与 systemd 的完整步骤见 [`deploy/README.md`](deploy/README.md)，样例文件（`Dockerfile`、`docker-compose.yml`、`ghproxy.service`）都在 `deploy/`，nginx 配置在 `deploy/nginx/`。
