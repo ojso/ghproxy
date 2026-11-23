@@ -1,0 +1,234 @@
+openapi: 3.1.0
+info:
+  title: ghproxy
+  version: 0.1.0
+  description: |
+    GitHub 下载缓存代理。请求路径为前缀式：`/https://<host>/<path>`。
+    第二次请求同一 URL 时从本地磁盘返回。
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /_health:
+    get:
+      summary: 健康检查
+      responses:
+        "200":
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version, uptime_seconds, cache]
+                properties:
+                  status:
+                    const: ok
+                  version:
+                    type: string
+                  uptime_seconds:
+                    type: integer
+                  cache:
+                    $ref: "#/components/schemas/Stats"
+  /_stats:
+    get:
+      summary: 缓存统计
+      responses:
+        "200":
+          description: 统计快照
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+  /_entries:
+    get:
+      summary: 缓存清单
+      description: 按最近访问时间倒序返回已完整缓存的条目。
+      responses:
+        "200":
+          description: 缓存条目列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, bytes, entries]
+                properties:
+                  count:
+                    type: integer
+                  bytes:
+                    type: integer
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CacheEntry"
+    delete:
+      summary: 清空缓存
+      description: 删除所有完整缓存条目；正在下载的半成品保留，重启后按过期时间清理。
+      responses:
+        "204":
+          description: 已清空
+          headers:
+            X-Deleted-Entries:
+              description: 实际删除的条目数
+              schema:
+                type: integer
+        "403":
+          description: 来源网段不允许
+  /_entries/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: 缓存键，取 `/_entries` 返回的 `key` 字段（URL 的 SHA-256 十六进制）
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+    delete:
+      summary: 删除单条缓存
+      responses:
+        "204":
+          description: 已删除
+        "400":
+          description: key 不是 64 位小写十六进制
+        "403":
+          description: 来源网段不允许
+        "404":
+          description: 条目不存在
+  /{target}:
+    parameters:
+      - name: target
+        in: path
+        required: true
+        description: 完整的上游 URL，例如 `https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64`
+        schema:
+          type: string
+      - name: Range
+        in: header
+        required: false
+        description: 命中缓存时支持单区间字节范围
+        schema:
+          type: string
+          example: bytes=0-1023
+    get:
+      summary: 代理下载
+      description: 首次请求回源并落盘；若上次回源中断，服务端会从已下载偏移续传。
+      responses:
+        "200":
+          description: 完整内容（字节与上游一致）
+          headers:
+            X-Cache:
+              $ref: "#/components/headers/XCache"
+            X-Content-SHA256:
+              description: 缓存内容的 SHA-256（命中时返回）
+              schema:
+                type: string
+            Content-Encoding:
+              description: 上游内容编码；代理不解压，原样转发并缓存
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: 命中缓存的 Range 请求
+          headers:
+            X-Cache:
+              $ref: "#/components/headers/XCache"
+            Content-Range:
+              schema:
+                type: string
+            Content-Encoding:
+              schema:
+                type: string
+        "400":
+          description: 目标不合法（格式错误、路径穿越）
+        "403":
+          description: 域名不在白名单，或来源网段不允许
+        "405":
+          description: 方法不允许
+        "502":
+          description: 上游请求失败（含重定向到白名单外域名）
+        default:
+          description: |
+            上游返回其它状态码时原样透传。响应体过大时服务端会截断，
+            返回的 `Content-Length` 始终等于实际响应体字节数。
+    head:
+      summary: 探测（命中缓存返回头部；未命中透传）
+      responses:
+        "200":
+          description: 头部信息
+        "206":
+          description: 头部信息（Range）
+        default:
+          description: 上游返回其它状态码时原样透传头部
+    delete:
+      summary: 删除该 URL 的缓存
+      description: 与 `DELETE /_entries/{key}` 等价，直接用前缀式 URL 指定条目；只删缓存，不访问上游。
+      responses:
+        "204":
+          description: 已删除
+        "400":
+          description: 目标不合法（格式错误、路径穿越）
+        "403":
+          description: 域名不在白名单，或来源网段不允许
+        "404":
+          description: 该 URL 没有任何缓存文件（含半成品）
+components:
+  headers:
+    XCache:
+      description: 缓存状态
+      schema:
+        type: string
+        enum: [HIT, MISS, BYPASS]
+  schemas:
+    CacheEntry:
+      type: object
+      required: [key, url, status, size, created_at, last_access]
+      properties:
+        key:
+          type: string
+          description: 缓存键（URL 的 SHA-256），用于 `DELETE /_entries/{key}`
+          pattern: "^[0-9a-f]{64}$"
+        url:
+          type: string
+        status:
+          type: integer
+        content_type:
+          type: string
+        content_encoding:
+          type: string
+        size:
+          type: integer
+        sha256:
+          type: string
+        etag:
+          type: string
+        created_at:
+          type: number
+          format: float
+        last_access:
+          type: number
+          format: float
+    Stats:
+      type: object
+      required: [entries, bytes, max_bytes, hits, misses, bypasses, errors, evictions, hit_rate]
+      properties:
+        entries:
+          type: integer
+        bytes:
+          type: integer
+        max_bytes:
+          type: integer
+        hits:
+          type: integer
+        misses:
+          type: integer
+        bypasses:
+          type: integer
+        errors:
+          type: integer
+        evictions:
+          type: integer
+        hit_rate:
+          type: number
+          format: float

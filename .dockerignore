@@ -1,0 +1,18 @@
+# Keep the Docker build context small and reproducible.
+.git
+.gitignore
+.gitattributes
+.specify
+.venv
+cache
+**/__pycache__
+.pytest_cache
+*.pyc
+*.pyo
+*.egg-info
+.python-version
+docs
+specs
+contracts
+tests
+scripts

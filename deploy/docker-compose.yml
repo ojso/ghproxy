@@ -1,0 +1,21 @@
+services:
+  ghproxy:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: ghproxy:0.1.0
+    container_name: ghproxy
+    ports:
+      - "127.0.0.1:${GH_PROXY_PORT:-18080}:8080"
+    environment:
+      CACHE_DIR: /cache
+      MAX_CACHE_BYTES: ${MAX_CACHE_BYTES:-50GiB}
+      MAX_OBJECT_BYTES: ${MAX_OBJECT_BYTES:-4GiB}
+      CACHE_TTL: ${CACHE_TTL:-720h}
+      # nginx 在前面时建议留空：应用看到的来源是 nginx / 容器网关，
+      # 不是真实客户端 IP。访问控制放在 nginx 或防火墙上。
+      ALLOW_CIDRS: ${ALLOW_CIDRS:-}
+    volumes:
+      # 宿主机缓存目录必须属于 UID/GID 10001（镜像内用户 ghproxy）
+      - ${GH_CACHE_DIR:-/srv/ghproxy/cache}:/cache
+    restart: unless-stopped

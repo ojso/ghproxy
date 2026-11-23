@@ -1,0 +1,5 @@
+{
+  "feature": "001-github-cache-proxy",
+  "path": "specs/001-github-cache-proxy",
+  "note": "手工初始化（未使用 specify CLI），此文件用于记录当前活跃 feature"
+}
